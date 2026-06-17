@@ -6,6 +6,7 @@ import {
   deleteCategoryFolder,
   movePhotoToCategory,
   movePhotoToUnsorted,
+  renameCategoryFolder,
 } from '@/services/categoryService'
 import { importFilesToUnsorted, selectImportImageFiles } from '@/services/importService'
 import { renamePhoto } from '@/services/renameService'
@@ -327,6 +328,68 @@ export function useBrowsePhotoActions(options: UseBrowsePhotoActionsOptions) {
     }
   }
 
+  async function handleRenameCurrentCategory() {
+    const categoryName = options.currentCategoryName.value
+
+    if (!categoryName) {
+      return
+    }
+
+    try {
+      const { value } = await ElMessageBox.prompt('请输入新的分类名', '重命名分类', {
+        inputValue: categoryName,
+        inputPlaceholder: '新的分类名',
+        confirmButtonText: '确认重命名',
+        cancelButtonText: '取消',
+      })
+
+      const nextCategoryName = value.trim()
+      const workspace = getCurrentWorkspaceOrThrow()
+      const folderNames = getFolderNames(workspace.language)
+
+      const result = await renameCategoryFolder({
+        rootHandle: workspace.rootHandle,
+        folderNames,
+        categoryName,
+        nextCategoryName,
+        existingCategoryNames: options.photoStore.categoryNames,
+      })
+
+      const nextBindings = options.settingsStore.settings.classifyShortcutBindings.map(
+        (binding) => {
+          if (binding.categoryName !== categoryName) {
+            return binding
+          }
+
+          return {
+            ...binding,
+            categoryName: nextCategoryName,
+          }
+        },
+      )
+
+      await options.settingsStore.setClassifyShortcutBindings(nextBindings)
+
+      options.clearSelection()
+      options.photoStore.setCurrentView(`category:${nextCategoryName}`)
+
+      await options.photoStore.scanPhotos()
+
+      ElMessage.success(`分类已重命名，${result.movedCount} 张图片已保留在新分类中`)
+    } catch (error) {
+      if (error instanceof Error) {
+        if (error.message === 'cancel') {
+          return
+        }
+
+        ElMessage.error(error.message)
+        return
+      }
+
+      ElMessage.error('重命名分类失败')
+    }
+  }
+
   function openImportDialog() {
     selectedImportFileHandles.value = []
     importMode.value =
@@ -489,6 +552,7 @@ export function useBrowsePhotoActions(options: UseBrowsePhotoActionsOptions) {
     handleMoveSelectedPhotoToDiscarded,
     handleRestoreSelectedPhoto,
     handleDeleteCurrentCategory,
+    handleRenameCurrentCategory,
     openImportDialog,
     handleSelectImportFiles,
     handleStartImport,

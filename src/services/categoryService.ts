@@ -1,8 +1,8 @@
-import type { FolderNames } from '@/types/workspace'
 import type { PhotoItem } from '@/types/photo'
-import { isSupportedImageFile } from '@/utils/image'
-import { isValidCategoryName } from '@/utils/fileName'
+import type { FolderNames } from '@/types/workspace'
 import { moveFileToDirectory } from '@/services/fileSystemService'
+import { isValidCategoryName } from '@/utils/fileName'
+import { isSupportedImageFile } from '@/utils/image'
 import { joinPath } from '@/utils/path'
 
 const SYSTEM_FOLDER_NAMES_ZH = ['未分类', '已分类', '已废弃']
@@ -41,6 +41,30 @@ export function validateCategoryName(
   return null
 }
 
+async function getCategoryImageFileHandles(
+  categoryHandle: FileSystemDirectoryHandle,
+): Promise<FileSystemFileHandle[]> {
+  const fileHandles: FileSystemFileHandle[] = []
+
+  for await (const handle of categoryHandle.values()) {
+    if (handle.kind === 'directory') {
+      throw new Error('该分类文件夹中包含子文件夹，请先手动处理子文件夹后再继续。')
+    }
+
+    const fileHandle = handle as FileSystemFileHandle
+
+    if (!isSupportedImageFile(fileHandle.name)) {
+      throw new Error(
+        `该分类文件夹中包含非支持图片文件：${fileHandle.name}。请先手动处理后再继续。`,
+      )
+    }
+
+    fileHandles.push(fileHandle)
+  }
+
+  return fileHandles
+}
+
 export async function createCategoryFolder(options: {
   rootHandle: FileSystemDirectoryHandle
   folderNames: FolderNames
@@ -60,6 +84,53 @@ export async function createCategoryFolder(options: {
   await sortedHandle.getDirectoryHandle(trimmedName, {
     create: true,
   })
+}
+
+export async function renameCategoryFolder(options: {
+  rootHandle: FileSystemDirectoryHandle
+  folderNames: FolderNames
+  categoryName: string
+  nextCategoryName: string
+  existingCategoryNames: string[]
+}): Promise<{
+  movedCount: number
+}> {
+  const trimmedCurrentName = options.categoryName.trim()
+  const trimmedNextName = options.nextCategoryName.trim()
+
+  if (trimmedCurrentName.toLowerCase() === trimmedNextName.toLowerCase()) {
+    throw new Error('新分类名不能和当前分类名相同')
+  }
+
+  const existingNames = options.existingCategoryNames.filter((name) => {
+    return name.toLowerCase() !== trimmedCurrentName.toLowerCase()
+  })
+  const errorMessage = validateCategoryName(trimmedNextName, existingNames)
+
+  if (errorMessage) {
+    throw new Error(errorMessage)
+  }
+
+  const sortedHandle = await options.rootHandle.getDirectoryHandle(options.folderNames.sorted)
+  const currentCategoryHandle = await sortedHandle.getDirectoryHandle(trimmedCurrentName)
+  const fileHandles = await getCategoryImageFileHandles(currentCategoryHandle)
+  const nextCategoryHandle = await sortedHandle.getDirectoryHandle(trimmedNextName, {
+    create: true,
+  })
+
+  for (const fileHandle of fileHandles) {
+    await moveFileToDirectory({
+      sourceFileHandle: fileHandle,
+      sourceDirectoryHandle: currentCategoryHandle,
+      targetDirectoryHandle: nextCategoryHandle,
+    })
+  }
+
+  await sortedHandle.removeEntry(trimmedCurrentName)
+
+  return {
+    movedCount: fileHandles.length,
+  }
 }
 
 export async function movePhotoToCategory(options: {
@@ -126,24 +197,7 @@ export async function deleteCategoryFolder(options: {
   const unsortedHandle = await options.rootHandle.getDirectoryHandle(options.folderNames.unsorted)
 
   const categoryHandle = await sortedHandle.getDirectoryHandle(options.categoryName)
-
-  const fileHandles: FileSystemFileHandle[] = []
-
-  for await (const handle of categoryHandle.values()) {
-    if (handle.kind === 'directory') {
-      throw new Error('该分类文件夹中包含子文件夹，第一版暂不支持自动删除。请先手动处理子文件夹。')
-    }
-
-    const fileHandle = handle as FileSystemFileHandle
-
-    if (!isSupportedImageFile(fileHandle.name)) {
-      throw new Error(
-        `该分类文件夹中包含非支持图片文件：${fileHandle.name}。请先手动处理后再删除分类。`,
-      )
-    }
-
-    fileHandles.push(fileHandle)
-  }
+  const fileHandles = await getCategoryImageFileHandles(categoryHandle)
 
   for (const fileHandle of fileHandles) {
     await moveFileToDirectory({

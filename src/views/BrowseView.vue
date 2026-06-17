@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 
 import CategoryCreateDialog from '@/components/category/CategoryCreateDialog.vue'
+import CategoryManageDialog from '@/components/category/CategoryManageDialog.vue'
 import CategorySelectDialog from '@/components/category/CategorySelectDialog.vue'
 import ImportDialog from '@/components/import/ImportDialog.vue'
 import BrowseToolbar from '@/components/layout/BrowseToolbar.vue'
@@ -26,6 +27,7 @@ const workspaceStore = useWorkspaceStore()
 const photoStore = usePhotoStore()
 const historyStore = useHistoryStore()
 const settingsStore = useSettingsStore()
+const categoryManageDialogVisible = ref(false)
 
 const currentCategoryName = computed(() => {
   const view = photoStore.currentView
@@ -299,6 +301,7 @@ onUnmounted(() => {
         @refresh="handleRefresh"
         @undo="handleUndo"
         @create-category="createCategoryDialogVisible = true"
+        @manage-categories="categoryManageDialogVisible = true"
         @delete-category="handleDeleteCurrentCategory"
         @go-to-classify="goToClassify"
         @go-to-settings="goToSettings"
@@ -387,6 +390,8 @@ onUnmounted(() => {
     </el-container>
 
     <CategoryCreateDialog v-model="createCategoryDialogVisible" @confirm="handleCreateCategory" />
+
+    <CategoryManageDialog v-model="categoryManageDialogVisible" @changed="clearSelection" />
 
     <CategorySelectDialog
       v-model="selectCategoryDialogVisible"

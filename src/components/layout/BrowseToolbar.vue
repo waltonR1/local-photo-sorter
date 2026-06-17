@@ -11,6 +11,7 @@ const emit = defineEmits<{
   refresh: []
   undo: []
   createCategory: []
+  manageCategories: []
   deleteCategory: []
   goToClassify: []
   goToSettings: []
@@ -33,6 +34,8 @@ const emit = defineEmits<{
 
       <el-button @click="emit('createCategory')"> 新建分类 </el-button>
 
+      <el-button @click="emit('manageCategories')"> 管理分类 </el-button>
+
       <el-button v-if="isCategoryView" type="danger" plain @click="emit('deleteCategory')">
         删除分类
       </el-button>
@@ -49,6 +52,7 @@ const emit = defineEmits<{
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
   border-bottom: 1px solid #e4e7ed;
 }
 
@@ -65,11 +69,13 @@ const emit = defineEmits<{
 
 .actions {
   display: flex;
+  justify-content: flex-end;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .actions :deep(.el-button) {
-  width: 112px;
+  min-width: 112px;
   margin-left: 0;
 }
 </style>

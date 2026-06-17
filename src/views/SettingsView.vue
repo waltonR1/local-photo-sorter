@@ -2,11 +2,11 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useWorkspaceStore } from '@/stores/workspaceStore'
-import { usePhotoStore } from '@/stores/photoStore'
-import { useHistoryStore } from '@/stores/historyStore'
 
+import { useHistoryStore } from '@/stores/historyStore'
+import { usePhotoStore } from '@/stores/photoStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useWorkspaceStore } from '@/stores/workspaceStore'
 import type {
   ClassifyShortcutBinding,
   GridSize,
@@ -67,14 +67,14 @@ const shortcutBindings = computed(() => {
 })
 
 function getAvailableCategoryNames(bindingIndex: number): string[] {
-  const selectedCategoryNames = new Set(
+  const selectedNames = new Set(
     shortcutBindings.value
       .filter((_binding, index) => index !== bindingIndex)
       .map((binding) => binding.categoryName),
   )
 
   return photoStore.categoryNames.filter((categoryName) => {
-    return !selectedCategoryNames.has(categoryName)
+    return !selectedNames.has(categoryName)
   })
 }
 
@@ -100,7 +100,11 @@ async function handleUpdateBindingCategory(index: number, categoryName: string) 
     return
   }
 
-  if (nextBindings.some((binding, bindingIndex) => bindingIndex !== index && binding.categoryName === categoryName)) {
+  if (
+    nextBindings.some((binding, bindingIndex) => {
+      return bindingIndex !== index && binding.categoryName === categoryName
+    })
+  ) {
     ElMessage.warning('该分类已经绑定了快捷键')
     return
   }
@@ -231,7 +235,9 @@ onUnmounted(() => {
             <el-option label="English" value="en" />
           </el-select>
 
-          <div class="form-tip">这里只影响界面语言，不会修改已经创建的本地文件夹名称。</div>
+          <div class="form-tip">
+            这里只影响界面语言，不会修改已经创建的本地文件夹名称。
+          </div>
         </el-form-item>
 
         <el-form-item label="网格大小">
@@ -262,7 +268,9 @@ onUnmounted(() => {
             <el-option label="移动导入" value="move" />
           </el-select>
 
-          <div class="form-tip">当前版本导入功能优先支持复制导入；移动导入后续再完善。</div>
+          <div class="form-tip">
+            当前版本导入功能优先支持复制导入；移动导入后续再完善。
+          </div>
         </el-form-item>
 
         <el-form-item label="分类快捷键">
@@ -301,7 +309,8 @@ onUnmounted(() => {
           </div>
 
           <div class="form-tip">
-            左侧点击后按新的快捷键即可修改；右侧选择该快捷键绑定的分类。未手动设置时默认按 1,2,3,4,5,6,7,8,9,0 绑定前 10 个分类。
+            左侧点击后按新的快捷键即可修改；右侧选择该快捷键绑定的分类。未手动设置时默认按
+            1,2,3,4,5,6,7,8,9,0 绑定前 10 个分类。
           </div>
         </el-form-item>
       </el-form>

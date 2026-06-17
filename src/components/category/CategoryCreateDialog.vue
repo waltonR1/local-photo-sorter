@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
+import type { InputInstance } from 'element-plus'
 
 const props = defineProps<{
   modelValue: boolean
@@ -11,12 +12,20 @@ const emit = defineEmits<{
 }>()
 
 const categoryName = ref('')
+const categoryNameInputRef = ref<InputInstance>()
+
+function focusCategoryNameInput() {
+  nextTick(() => {
+    categoryNameInputRef.value?.focus()
+  })
+}
 
 watch(
   () => props.modelValue,
   (visible) => {
     if (visible) {
       categoryName.value = ''
+      focusCategoryNameInput()
     }
   },
 )
@@ -36,10 +45,12 @@ function handleConfirm() {
     title="新建分类"
     width="420px"
     @update:model-value="emit('update:modelValue', $event)"
+    @opened="focusCategoryNameInput"
   >
     <el-form label-width="80px" @submit.prevent>
       <el-form-item label="分类名">
         <el-input
+          ref="categoryNameInputRef"
           v-model="categoryName"
           placeholder="例如：产品图、参考图、截图"
           autofocus

@@ -56,7 +56,7 @@ export async function createWorkspaceFolders(
 export async function ensureWorkspacePermission(
   rootHandle: FileSystemDirectoryHandle,
 ): Promise<boolean> {
-  if (!rootHandle.queryPermission || !rootHandle.requestPermission) {
+  if (!rootHandle.queryPermission) {
     return true
   }
 
@@ -68,9 +68,27 @@ export async function ensureWorkspacePermission(
     return true
   }
 
+  if (!rootHandle.requestPermission) {
+    return false
+  }
+
   const requestResult = await rootHandle.requestPermission({
     mode: 'readwrite',
   })
 
   return requestResult === 'granted'
+}
+
+export async function hasWorkspacePermission(
+  rootHandle: FileSystemDirectoryHandle,
+): Promise<boolean> {
+  if (!rootHandle.queryPermission) {
+    return true
+  }
+
+  const queryResult = await rootHandle.queryPermission({
+    mode: 'readwrite',
+  })
+
+  return queryResult === 'granted'
 }

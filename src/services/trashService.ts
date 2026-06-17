@@ -6,7 +6,11 @@ import {
   joinPath,
   removeFirstPathSegment,
 } from '@/utils/path'
-import { getOrCreateDirectoryByPath, moveFileToDirectory } from '@/services/fileSystemService'
+import {
+  getOrCreateDirectoryByPath,
+  moveFileToDirectory,
+  removeEmptyDirectoriesUpTo,
+} from '@/services/fileSystemService'
 
 export async function movePhotoToDiscarded(options: {
   rootHandle: FileSystemDirectoryHandle
@@ -64,6 +68,12 @@ export async function restorePhotoFromDiscarded(options: {
     sourceDirectoryHandle: options.photo.parentDirHandle,
     targetDirectoryHandle,
     targetFileName: originalFileName,
+  })
+
+  await removeEmptyDirectoriesUpTo({
+    rootHandle: options.rootHandle,
+    directoryPath: getDirectoryPathFromPath(options.photo.relativePath),
+    stopAtPath: options.folderNames.discarded,
   })
 
   return joinPath(restoreDirectoryPath, finalFileName)

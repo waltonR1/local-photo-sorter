@@ -94,6 +94,26 @@ export async function movePhotoToCategory(options: {
   return joinPath(options.folderNames.sorted, options.categoryName, finalFileName)
 }
 
+export async function movePhotoToUnsorted(options: {
+  rootHandle: FileSystemDirectoryHandle
+  folderNames: FolderNames
+  photo: PhotoItem
+}): Promise<string> {
+  if (options.photo.parentType !== 'category') {
+    throw new Error('只有已分类图片可以移回未分类')
+  }
+
+  const unsortedHandle = await options.rootHandle.getDirectoryHandle(options.folderNames.unsorted)
+
+  const finalFileName = await moveFileToDirectory({
+    sourceFileHandle: options.photo.fileHandle,
+    sourceDirectoryHandle: options.photo.parentDirHandle,
+    targetDirectoryHandle: unsortedHandle,
+  })
+
+  return joinPath(options.folderNames.unsorted, finalFileName)
+}
+
 export async function deleteCategoryFolder(options: {
   rootHandle: FileSystemDirectoryHandle
   folderNames: FolderNames

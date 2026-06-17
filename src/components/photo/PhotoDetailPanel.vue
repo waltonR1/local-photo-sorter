@@ -5,6 +5,7 @@ defineProps<{
   selectedPhotos: PhotoItem[]
   singleSelectedPhoto: PhotoItem | null
   selectedNormalPhotos: PhotoItem[]
+  selectedCategoryPhotos: PhotoItem[]
   selectedDiscardedPhotos: PhotoItem[]
   getPhotoStatusLabel: (status: PhotoItem['parentType']) => string
   getDisplayPath: (photo: PhotoItem) => string
@@ -14,6 +15,7 @@ defineProps<{
 
 const emit = defineEmits<{
   moveToCategory: []
+  moveToUnsorted: []
   moveToDiscarded: []
   restore: []
   rename: []
@@ -33,6 +35,10 @@ const emit = defineEmits<{
           {{ selectedNormalPhotos.length }} 张
         </el-descriptions-item>
 
+        <el-descriptions-item label="已分类">
+          {{ selectedCategoryPhotos.length }} 张
+        </el-descriptions-item>
+
         <el-descriptions-item label="已废弃">
           {{ selectedDiscardedPhotos.length }} 张
         </el-descriptions-item>
@@ -45,6 +51,10 @@ const emit = defineEmits<{
           @click="emit('moveToCategory')"
         >
           批量移动到分类
+        </el-button>
+
+        <el-button :disabled="selectedCategoryPhotos.length === 0" @click="emit('moveToUnsorted')">
+          批量移回未分类
         </el-button>
 
         <el-button
@@ -64,7 +74,7 @@ const emit = defineEmits<{
           批量恢复
         </el-button>
 
-        <el-button @click="emit('clearSelection')"> 取消选择 </el-button>
+        <el-button @click="emit('clearSelection')">取消选择</el-button>
       </div>
     </template>
 
@@ -99,7 +109,14 @@ const emit = defineEmits<{
 
       <div class="detail-actions">
         <template v-if="singleSelectedPhoto.parentType !== 'discarded'">
-          <el-button type="primary" @click="emit('moveToCategory')"> 移动到分类</el-button>
+          <el-button type="primary" @click="emit('moveToCategory')">移动到分类</el-button>
+
+          <el-button
+            v-if="singleSelectedPhoto.parentType === 'category'"
+            @click="emit('moveToUnsorted')"
+          >
+            移回未分类
+          </el-button>
 
           <el-button type="danger" plain @click="emit('moveToDiscarded')">
             移动到已废弃
@@ -107,12 +124,12 @@ const emit = defineEmits<{
         </template>
 
         <template v-else>
-          <el-button type="success" @click="emit('restore')"> 恢复到原位置 </el-button>
+          <el-button type="success" @click="emit('restore')">恢复到原位置</el-button>
         </template>
 
-        <el-button @click="emit('rename')"> 重命名</el-button>
+        <el-button @click="emit('rename')">重命名</el-button>
 
-        <el-button @click="emit('clearSelection')"> 取消选择 </el-button>
+        <el-button @click="emit('clearSelection')">取消选择</el-button>
       </div>
     </template>
 
@@ -153,7 +170,13 @@ const emit = defineEmits<{
 .detail-actions {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 8px;
   margin-top: 16px;
+}
+
+.detail-actions :deep(.el-button) {
+  width: min(212px, 100%) !important;
+  margin-left: 0 !important;
 }
 </style>

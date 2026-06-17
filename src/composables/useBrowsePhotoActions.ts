@@ -1,7 +1,12 @@
 import { ref, type ComputedRef } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
-import { createCategoryFolder, deleteCategoryFolder, movePhotoToCategory } from '@/services/categoryService'
+import {
+  createCategoryFolder,
+  deleteCategoryFolder,
+  movePhotoToCategory,
+  movePhotoToUnsorted,
+} from '@/services/categoryService'
 import { importFilesToUnsorted, selectImportImageFiles } from '@/services/importService'
 import { renamePhoto } from '@/services/renameService'
 import { movePhotoToDiscarded, restorePhotoFromDiscarded } from '@/services/trashService'
@@ -22,9 +27,9 @@ interface UseBrowsePhotoActionsOptions {
   selectedPhotos: ComputedRef<PhotoItem[]>
   singleSelectedPhoto: ComputedRef<PhotoItem | null>
   selectedNormalPhotos: ComputedRef<PhotoItem[]>
+  selectedCategoryPhotos: ComputedRef<PhotoItem[]>
   selectedDiscardedPhotos: ComputedRef<PhotoItem[]>
   clearSelection: () => void
-  resetVisibleLimit: () => void
 }
 
 export function useBrowsePhotoActions(options: UseBrowsePhotoActionsOptions) {
@@ -138,6 +143,46 @@ export function useBrowsePhotoActions(options: UseBrowsePhotoActionsOptions) {
       }
 
       ElMessage.error('移动失败')
+    }
+  }
+
+  async function handleMoveSelectedPhotoToUnsorted() {
+    const photosToMove = options.selectedCategoryPhotos.value
+
+    if (photosToMove.length === 0) {
+      ElMessage.warning('请选择已分类图片')
+      return
+    }
+
+    try {
+      const workspace = getCurrentWorkspaceOrThrow()
+      const folderNames = getFolderNames(workspace.language)
+
+      for (const photo of photosToMove) {
+        const toPath = await movePhotoToUnsorted({
+          rootHandle: workspace.rootHandle,
+          folderNames,
+          photo,
+        })
+
+        options.historyStore.pushMoveAction({
+          fromPath: photo.relativePath,
+          toPath,
+        })
+      }
+
+      options.clearSelection()
+
+      await options.photoStore.scanPhotos()
+
+      ElMessage.success(`已移回 ${photosToMove.length} 张图片到未分类`)
+    } catch (error) {
+      if (error instanceof Error) {
+        ElMessage.error(error.message)
+        return
+      }
+
+      ElMessage.error('移回未分类失败')
     }
   }
 
@@ -342,7 +387,6 @@ export function useBrowsePhotoActions(options: UseBrowsePhotoActionsOptions) {
 
       await options.photoStore.scanPhotos()
       options.photoStore.setCurrentView('unsorted')
-      options.resetVisibleLimit()
       options.clearSelection()
 
       ElMessage.success(`导入完成，共导入 ${result.importedCount} 张图片`)
@@ -441,6 +485,7 @@ export function useBrowsePhotoActions(options: UseBrowsePhotoActionsOptions) {
     handleCreateCategory,
     openMoveToCategoryDialog,
     handleMoveSelectedPhotoToCategory,
+    handleMoveSelectedPhotoToUnsorted,
     handleMoveSelectedPhotoToDiscarded,
     handleRestoreSelectedPhoto,
     handleDeleteCurrentCategory,

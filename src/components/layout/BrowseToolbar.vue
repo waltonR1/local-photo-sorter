@@ -67,4 +67,9 @@ const emit = defineEmits<{
   display: flex;
   gap: 8px;
 }
+
+.actions :deep(.el-button) {
+  width: 112px;
+  margin-left: 0;
+}
 </style>

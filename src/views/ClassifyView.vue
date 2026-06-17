@@ -14,15 +14,18 @@ import { renamePhoto } from '@/services/renameService'
 import { movePhotoToDiscarded } from '@/services/trashService'
 import { useHistoryStore } from '@/stores/historyStore'
 import { usePhotoStore } from '@/stores/photoStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import type { ShortcutCategory } from '@/types/category'
 import type { WorkspaceLanguage } from '@/types/workspace'
+import { buildClassifyShortcutBindings } from '@/utils/classifyShortcuts'
 import { getFolderNames } from '@/utils/folderNames'
 
 const router = useRouter()
 const photoStore = usePhotoStore()
 const workspaceStore = useWorkspaceStore()
 const historyStore = useHistoryStore()
+const settingsStore = useSettingsStore()
 
 const currentCategoryName = ref('')
 const createCategoryDialogVisible = ref(false)
@@ -71,10 +74,10 @@ const {
 })
 
 const shortcutCategories = computed<ShortcutCategory[]>(() => {
-  return photoStore.categoryNames.slice(0, 10).map((name, index) => {
+  return buildClassifyShortcutBindings(photoStore.categoryNames, settingsStore.settings).map((binding) => {
     return {
-      name,
-      key: index === 9 ? '0' : String(index + 1),
+      name: binding.categoryName,
+      key: binding.key,
     }
   })
 })
@@ -100,7 +103,10 @@ function getCurrentWorkspaceOrThrow(): {
 }
 
 function getCategoryByShortcutKey(key: string): string | null {
-  const item = shortcutCategories.value.find((category) => category.key === key)
+  const normalizedKey = key.toLowerCase()
+  const item = shortcutCategories.value.find((category) => {
+    return category.key.toLowerCase() === normalizedKey
+  })
 
   return item?.name ?? null
 }
@@ -352,6 +358,8 @@ watch(
 )
 
 onMounted(async () => {
+  await settingsStore.loadSettings()
+
   if (photoStore.photos.length === 0) {
     await photoStore.scanPhotos()
   }

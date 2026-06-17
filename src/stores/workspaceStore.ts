@@ -2,7 +2,7 @@ import { markRaw } from 'vue'
 import { defineStore } from 'pinia'
 import { db } from '@/db/indexedDb'
 import type { WorkspaceLanguage, WorkspaceState } from '@/types/workspace'
-import { ensureWorkspacePermission } from '@/services/workspaceService'
+import { hasWorkspacePermission } from '@/services/workspaceService'
 
 interface WorkspaceStoreState {
   currentWorkspace: WorkspaceState | null
@@ -53,7 +53,7 @@ export const useWorkspaceStore = defineStore('workspace', {
 
       const rootHandle = markRaw(workspace.rootHandle)
 
-      const hasPermission = await ensureWorkspacePermission(rootHandle)
+      const hasPermission = await hasWorkspacePermission(rootHandle)
 
       if (!hasPermission) {
         this.currentWorkspace = null

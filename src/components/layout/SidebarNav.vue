@@ -63,6 +63,7 @@ function handleMenuSelect(index: string) {
 .sidebar {
   border-right: 1px solid #e4e7ed;
   background: #fff;
+  overflow: auto;
 }
 
 .menu-count {

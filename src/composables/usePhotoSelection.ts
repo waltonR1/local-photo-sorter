@@ -27,6 +27,10 @@ export function usePhotoSelection(options: UsePhotoSelectionOptions) {
     return selectedPhotos.value.filter((photo) => photo.parentType !== 'discarded')
   })
 
+  const selectedCategoryPhotos = computed(() => {
+    return selectedPhotos.value.filter((photo) => photo.parentType === 'category')
+  })
+
   const selectedDiscardedPhotos = computed(() => {
     return selectedPhotos.value.filter((photo) => photo.parentType === 'discarded')
   })
@@ -99,6 +103,7 @@ export function usePhotoSelection(options: UsePhotoSelectionOptions) {
     selectedPhotos,
     singleSelectedPhoto,
     selectedNormalPhotos,
+    selectedCategoryPhotos,
     selectedDiscardedPhotos,
     clearSelection,
     setSingleSelection,

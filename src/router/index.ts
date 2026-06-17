@@ -46,7 +46,11 @@ router.beforeEach(async (to) => {
   const workspaceStore = useWorkspaceStore()
 
   if (!workspaceStore.hasWorkspace) {
-    await workspaceStore.restoreLastWorkspace()
+    try {
+      await workspaceStore.restoreLastWorkspace()
+    } catch {
+      workspaceStore.currentWorkspace = null
+    }
   }
 
   if (!workspaceStore.hasWorkspace) {

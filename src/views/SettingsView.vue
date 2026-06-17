@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
@@ -7,14 +7,25 @@ import { usePhotoStore } from '@/stores/photoStore'
 import { useHistoryStore } from '@/stores/historyStore'
 
 import { useSettingsStore } from '@/stores/settingsStore'
-import type { GridSize, ImportMode, SortBy, SortOrder } from '@/types/settings'
+import type {
+  ClassifyShortcutBinding,
+  GridSize,
+  ImportMode,
+  SortBy,
+  SortOrder,
+} from '@/types/settings'
 import type { WorkspaceLanguage } from '@/types/workspace'
+import {
+  buildClassifyShortcutBindings,
+  isReservedClassifyShortcutKey,
+} from '@/utils/classifyShortcuts'
 
 const router = useRouter()
 const settingsStore = useSettingsStore()
 const workspaceStore = useWorkspaceStore()
 const photoStore = usePhotoStore()
 const historyStore = useHistoryStore()
+const listeningShortcutIndex = ref<number | null>(null)
 
 const uiLanguage = computed({
   get: () => settingsStore.settings.uiLanguage,
@@ -51,6 +62,100 @@ const defaultImportMode = computed({
   },
 })
 
+const shortcutBindings = computed(() => {
+  return buildClassifyShortcutBindings(photoStore.categoryNames, settingsStore.settings)
+})
+
+function getAvailableCategoryNames(bindingIndex: number): string[] {
+  const selectedCategoryNames = new Set(
+    shortcutBindings.value
+      .filter((_binding, index) => index !== bindingIndex)
+      .map((binding) => binding.categoryName),
+  )
+
+  return photoStore.categoryNames.filter((categoryName) => {
+    return !selectedCategoryNames.has(categoryName)
+  })
+}
+
+async function saveShortcutBindings(bindings: ClassifyShortcutBinding[]) {
+  try {
+    await settingsStore.setClassifyShortcutBindings(bindings)
+    showSavedMessage()
+  } catch (error) {
+    if (error instanceof Error) {
+      ElMessage.error(error.message)
+      return
+    }
+
+    ElMessage.error('保存快捷键设置失败')
+  }
+}
+
+async function handleUpdateBindingCategory(index: number, categoryName: string) {
+  const nextBindings = shortcutBindings.value.map((binding) => ({ ...binding }))
+  const currentBinding = nextBindings[index]
+
+  if (!currentBinding) {
+    return
+  }
+
+  if (nextBindings.some((binding, bindingIndex) => bindingIndex !== index && binding.categoryName === categoryName)) {
+    ElMessage.warning('该分类已经绑定了快捷键')
+    return
+  }
+
+  currentBinding.categoryName = categoryName
+  await saveShortcutBindings(nextBindings)
+}
+
+function startListeningShortcut(index: number) {
+  listeningShortcutIndex.value = index
+}
+
+function stopListeningShortcut() {
+  listeningShortcutIndex.value = null
+}
+
+async function handleShortcutKeydown(event: KeyboardEvent) {
+  if (listeningShortcutIndex.value === null) {
+    return
+  }
+
+  event.preventDefault()
+
+  const shortcutKey = event.key.length === 1 ? event.key : event.key.toLowerCase()
+
+  if (isReservedClassifyShortcutKey(shortcutKey)) {
+    ElMessage.warning('快捷键不能使用 Enter、Space、Delete、N、R、Esc')
+    stopListeningShortcut()
+    return
+  }
+
+  const nextBindings = shortcutBindings.value.map((binding) => ({ ...binding }))
+  const currentBinding = nextBindings[listeningShortcutIndex.value]
+
+  if (!currentBinding) {
+    stopListeningShortcut()
+    return
+  }
+
+  const normalizedKey = shortcutKey.toLowerCase()
+  const hasDuplicateKey = nextBindings.some((binding, bindingIndex) => {
+    return bindingIndex !== listeningShortcutIndex.value && binding.key.toLowerCase() === normalizedKey
+  })
+
+  if (hasDuplicateKey) {
+    ElMessage.warning('快捷键不能重复')
+    stopListeningShortcut()
+    return
+  }
+
+  currentBinding.key = shortcutKey
+  await saveShortcutBindings(nextBindings)
+  stopListeningShortcut()
+}
+
 async function goBack() {
   await router.push('/browse')
 }
@@ -86,6 +191,22 @@ async function resetWorkspace() {
 
 onMounted(async () => {
   await settingsStore.loadSettings()
+
+  if (workspaceStore.hasWorkspace && photoStore.photos.length === 0) {
+    try {
+      await photoStore.scanPhotos()
+    } catch (error) {
+      if (error instanceof Error) {
+        ElMessage.error(error.message)
+      }
+    }
+  }
+
+  window.addEventListener('keydown', handleShortcutKeydown, true)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleShortcutKeydown, true)
 })
 </script>
 
@@ -143,6 +264,46 @@ onMounted(async () => {
 
           <div class="form-tip">当前版本导入功能优先支持复制导入；移动导入后续再完善。</div>
         </el-form-item>
+
+        <el-form-item label="分类快捷键">
+          <div class="shortcut-bindings">
+            <div v-if="shortcutBindings.length === 0" class="form-tip">
+              暂无分类，创建分类后可以在这里绑定快捷键。
+            </div>
+
+            <div
+              v-for="(binding, index) in shortcutBindings"
+              :key="`${binding.key}-${binding.categoryName}`"
+              class="shortcut-row"
+            >
+              <el-button
+                class="shortcut-key-button"
+                :type="listeningShortcutIndex === index ? 'primary' : 'default'"
+                @click="startListeningShortcut(index)"
+              >
+                {{ listeningShortcutIndex === index ? '按键中' : binding.key }}
+              </el-button>
+
+              <el-select
+                :model-value="binding.categoryName"
+                class="shortcut-category-select"
+                filterable
+                @change="(value: string) => handleUpdateBindingCategory(index, value)"
+              >
+                <el-option
+                  v-for="categoryName in getAvailableCategoryNames(index)"
+                  :key="categoryName"
+                  :label="categoryName"
+                  :value="categoryName"
+                />
+              </el-select>
+            </div>
+          </div>
+
+          <div class="form-tip">
+            左侧点击后按新的快捷键即可修改；右侧选择该快捷键绑定的分类。未手动设置时默认按 1,2,3,4,5,6,7,8,9,0 绑定前 10 个分类。
+          </div>
+        </el-form-item>
       </el-form>
 
       <el-divider />
@@ -163,7 +324,8 @@ onMounted(async () => {
 
 <style scoped>
 .page {
-  min-height: 100vh;
+  height: 100vh;
+  overflow: auto;
   padding: 32px;
   background: #f5f7fa;
 }
@@ -195,6 +357,29 @@ onMounted(async () => {
   color: #909399;
   font-size: 13px;
   line-height: 1.6;
+}
+
+.shortcut-bindings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 420px;
+}
+
+.shortcut-row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.shortcut-key-button {
+  width: 88px;
+  margin-left: 0;
+}
+
+.shortcut-category-select {
+  width: 100%;
 }
 
 .danger-zone {

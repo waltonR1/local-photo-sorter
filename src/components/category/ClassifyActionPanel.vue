@@ -111,6 +111,12 @@ const emit = defineEmits<{
   flex-wrap: wrap;
 }
 
+.category-buttons :deep(.el-button),
+.main-actions :deep(.el-button) {
+  min-width: 112px;
+  margin-left: 0;
+}
+
 .main-actions {
   margin-top: 20px;
 }

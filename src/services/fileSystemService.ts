@@ -73,6 +73,16 @@ export async function moveFileToDirectory(options: {
   return finalFileName
 }
 
+export async function isDirectoryEmpty(
+  directoryHandle: FileSystemDirectoryHandle,
+): Promise<boolean> {
+  for await (const _handle of directoryHandle.values()) {
+    return false
+  }
+
+  return true
+}
+
 export async function getOrCreateDirectoryByPath(
   rootHandle: FileSystemDirectoryHandle,
   directoryPath: string,
@@ -103,6 +113,37 @@ export async function getDirectoryByPath(
   }
 
   return currentHandle
+}
+
+export async function removeEmptyDirectoriesUpTo(options: {
+  rootHandle: FileSystemDirectoryHandle
+  directoryPath: string
+  stopAtPath: string
+}): Promise<void> {
+  const directoryParts = splitPath(options.directoryPath)
+  const stopParts = splitPath(options.stopAtPath)
+
+  for (let length = directoryParts.length; length > stopParts.length; length -= 1) {
+    const currentPath = directoryParts.slice(0, length).join('/')
+    const parentPath = directoryParts.slice(0, length - 1).join('/')
+    const directoryName = directoryParts[length - 1]
+
+    if (!directoryName) {
+      return
+    }
+
+    const currentHandle = await getDirectoryByPath(options.rootHandle, currentPath)
+
+    if (!(await isDirectoryEmpty(currentHandle))) {
+      return
+    }
+
+    const parentHandle = parentPath
+      ? await getDirectoryByPath(options.rootHandle, parentPath)
+      : options.rootHandle
+
+    await parentHandle.removeEntry(directoryName)
+  }
 }
 
 export async function getFileHandleByPath(

@@ -5,6 +5,7 @@ import { db } from '@/db/indexedDb'
 import {
   DEFAULT_APP_SETTINGS,
   type AppSettings,
+  type ClassifyShortcutBinding,
   type GridSize,
   type ImportMode,
   type SortBy,
@@ -16,13 +17,20 @@ export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<AppSettings>({ ...DEFAULT_APP_SETTINGS })
   const loaded = ref(false)
 
+  function createSerializableSettings(value: AppSettings): AppSettings {
+    return JSON.parse(JSON.stringify(value)) as AppSettings
+  }
+
   async function loadSettings() {
     const record = await db.settings.get('default')
 
     if (record) {
-      settings.value = record
+      settings.value = {
+        ...DEFAULT_APP_SETTINGS,
+        ...record,
+      }
     } else {
-      await db.settings.put(settings.value)
+      await db.settings.put(createSerializableSettings(settings.value))
     }
 
     loaded.value = true
@@ -37,7 +45,7 @@ export const useSettingsStore = defineStore('settings', () => {
     }
 
     settings.value = nextSettings
-    await db.settings.put(nextSettings)
+    await db.settings.put(createSerializableSettings(nextSettings))
   }
 
   async function setGridSize(gridSize: GridSize) {
@@ -56,6 +64,22 @@ export const useSettingsStore = defineStore('settings', () => {
     await updateSettings({ defaultImportMode })
   }
 
+  async function setClassifyShortcutKeys(classifyShortcutKeys: string[]) {
+    await updateSettings({ classifyShortcutKeys })
+  }
+
+  async function setClassifyCategoryShortcutMap(
+    classifyCategoryShortcutMap: Record<string, string>,
+  ) {
+    await updateSettings({ classifyCategoryShortcutMap })
+  }
+
+  async function setClassifyShortcutBindings(
+    classifyShortcutBindings: ClassifyShortcutBinding[],
+  ) {
+    await updateSettings({ classifyShortcutBindings })
+  }
+
   async function setUiLanguage(uiLanguage: WorkspaceLanguage) {
     await updateSettings({ uiLanguage })
   }
@@ -69,6 +93,9 @@ export const useSettingsStore = defineStore('settings', () => {
     setSortBy,
     setSortOrder,
     setDefaultImportMode,
+    setClassifyShortcutKeys,
+    setClassifyCategoryShortcutMap,
+    setClassifyShortcutBindings,
     setUiLanguage,
   }
 })

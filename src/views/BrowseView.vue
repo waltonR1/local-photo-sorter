@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 
@@ -26,8 +26,6 @@ const workspaceStore = useWorkspaceStore()
 const photoStore = usePhotoStore()
 const historyStore = useHistoryStore()
 const settingsStore = useSettingsStore()
-
-const PAGE_SIZE = 40
 
 const currentCategoryName = computed(() => {
   const view = photoStore.currentView
@@ -58,12 +56,6 @@ const currentViewTitle = computed(() => {
   return '照片'
 })
 
-const visibleLimit = ref(PAGE_SIZE)
-
-const visiblePhotos = computed(() => {
-  return photoStore.filteredPhotos.slice(0, visibleLimit.value)
-})
-
 const allPhotos = computed(() => photoStore.photos)
 const filteredPhotos = computed(() => photoStore.filteredPhotos)
 
@@ -72,13 +64,14 @@ const {
   selectedPhotos,
   singleSelectedPhoto,
   selectedNormalPhotos,
+  selectedCategoryPhotos,
   selectedDiscardedPhotos,
   clearSelection,
   setSingleSelection,
   handleSelectPhoto,
 } = usePhotoSelection({
   photos: allPhotos,
-  rangePhotos: visiblePhotos,
+  rangePhotos: filteredPhotos,
 })
 
 const {
@@ -95,10 +88,6 @@ const {
   setSingleSelection,
 })
 
-function resetVisibleLimit() {
-  visibleLimit.value = PAGE_SIZE
-}
-
 const {
   createCategoryDialogVisible,
   selectCategoryDialogVisible,
@@ -110,6 +99,7 @@ const {
   handleCreateCategory,
   openMoveToCategoryDialog,
   handleMoveSelectedPhotoToCategory,
+  handleMoveSelectedPhotoToUnsorted,
   handleMoveSelectedPhotoToDiscarded,
   handleRestoreSelectedPhoto,
   handleDeleteCurrentCategory,
@@ -128,23 +118,15 @@ const {
   selectedPhotos,
   singleSelectedPhoto,
   selectedNormalPhotos,
+  selectedCategoryPhotos,
   selectedDiscardedPhotos,
   clearSelection,
-  resetVisibleLimit,
-})
-
-const hasMorePhotos = computed(() => {
-  return visibleLimit.value < photoStore.filteredPhotos.length
 })
 
 function applySettingsToPhotoStore() {
   photoStore.gridSize = settingsStore.settings.gridSize
   photoStore.sortBy = settingsStore.settings.sortBy
   photoStore.sortOrder = settingsStore.settings.sortOrder
-}
-
-function loadMorePhotos() {
-  visibleLimit.value += PAGE_SIZE
 }
 
 watch(
@@ -158,19 +140,6 @@ watch(
   },
 )
 
-watch(
-  () => [
-    photoStore.currentView,
-    photoStore.searchKeyword,
-    photoStore.sortBy,
-    photoStore.sortOrder,
-    photoStore.gridSize,
-  ],
-  () => {
-    resetVisibleLimit()
-  },
-)
-
 function handleMenuSelect(view: PhotoViewKey) {
   photoStore.setCurrentView(view)
   clearSelection()
@@ -179,7 +148,6 @@ function handleMenuSelect(view: PhotoViewKey) {
 async function handleRefresh() {
   try {
     await photoStore.scanPhotos()
-    resetVisibleLimit()
     clearSelection()
     ElMessage.success('刷新完成')
   } catch (error) {
@@ -336,7 +304,7 @@ onUnmounted(() => {
         @go-to-settings="goToSettings"
       />
 
-      <el-container>
+      <el-container class="content-layout">
         <SidebarNav
           :current-view="photoStore.currentView"
           :total-normal-photos="photoStore.totalNormalPhotos"
@@ -383,19 +351,12 @@ onUnmounted(() => {
           <div v-loading="photoStore.loading" class="photo-content">
             <div v-if="photoStore.filteredPhotos.length > 0">
               <PhotoGrid
-                :photos="visiblePhotos"
+                :photos="photoStore.filteredPhotos"
                 :grid-size="photoStore.gridSize"
                 :selected-photo-ids="selectedPhotoIds"
                 @select-photo="handleSelectPhoto"
                 @preview-photo="handlePreviewPhoto"
               />
-
-              <div v-if="hasMorePhotos" class="load-more">
-                <el-button @click="loadMorePhotos">
-                  加载更多
-                  {{ visiblePhotos.length }} / {{ photoStore.filteredPhotos.length }}
-                </el-button>
-              </div>
             </div>
 
             <el-empty v-else description="暂无图片" />
@@ -406,12 +367,14 @@ onUnmounted(() => {
           :selected-photos="selectedPhotos"
           :single-selected-photo="singleSelectedPhoto"
           :selected-normal-photos="selectedNormalPhotos"
+          :selected-category-photos="selectedCategoryPhotos"
           :selected-discarded-photos="selectedDiscardedPhotos"
           :get-photo-status-label="getPhotoStatusLabel"
           :get-display-path="getDisplayPath"
           :format-file-size="formatFileSize"
           :format-time="formatTime"
           @move-to-category="openMoveToCategoryDialog"
+          @move-to-unsorted="handleMoveSelectedPhotoToUnsorted"
           @move-to-discarded="handleMoveSelectedPhotoToDiscarded"
           @restore="handleRestoreSelectedPhoto"
           @rename="openRenameDialog"
@@ -460,10 +423,17 @@ onUnmounted(() => {
 <style scoped>
 .page {
   height: 100vh;
+  overflow: hidden;
 }
 
 .layout {
   height: 100%;
+}
+
+.content-layout {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .main {
@@ -506,9 +476,4 @@ onUnmounted(() => {
   padding: 16px;
 }
 
-.load-more {
-  display: flex;
-  justify-content: center;
-  padding: 24px 0 8px;
-}
 </style>

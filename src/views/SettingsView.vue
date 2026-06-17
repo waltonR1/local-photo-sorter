@@ -194,7 +194,7 @@ onMounted(async () => {
 
   if (workspaceStore.hasWorkspace && photoStore.photos.length === 0) {
     try {
-      await photoStore.scanPhotos()
+      await photoStore.scanPhotos({ generateThumbnails: false })
     } catch (error) {
       if (error instanceof Error) {
         ElMessage.error(error.message)

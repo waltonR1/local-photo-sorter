@@ -4,6 +4,10 @@ import { defineStore } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import { getFolderNames } from '@/utils/folderNames'
 import { scanWorkspacePhotos } from '@/services/photoScanService'
+import {
+  cleanupMissingThumbnails,
+  getOrCreateThumbnail,
+} from '@/services/thumbnailService'
 import type { PhotoItem, PhotoViewKey } from '@/types/photo'
 
 export const usePhotoStore = defineStore('photo', () => {
@@ -15,6 +19,11 @@ export const usePhotoStore = defineStore('photo', () => {
   const sortOrder = ref<'asc' | 'desc'>('asc')
   const gridSize = ref<'small' | 'medium' | 'large'>('medium')
   const loading = ref(false)
+  const thumbnailGenerating = ref(false)
+  const thumbnailTotal = ref(0)
+  const thumbnailDone = ref(0)
+  const thumbnailFailed = ref(0)
+  let thumbnailGenerationToken = 0
 
   const filteredPhotos = computed(() => {
     let result = [...photos.value]
@@ -84,9 +93,10 @@ export const usePhotoStore = defineStore('photo', () => {
     return counts
   })
 
-  async function scanPhotos() {
+  async function scanPhotos(options: { generateThumbnails?: boolean } = {}) {
     const workspaceStore = useWorkspaceStore()
     const workspace = workspaceStore.currentWorkspace
+    const shouldGenerateThumbnails = options.generateThumbnails ?? true
 
     if (!workspace?.rootHandle) {
       throw new Error('请先选择工作区')
@@ -95,6 +105,7 @@ export const usePhotoStore = defineStore('photo', () => {
     loading.value = true
 
     try {
+      cancelThumbnailGeneration()
       revokeObjectUrls()
 
       const folderNames = getFolderNames(workspace.language)
@@ -102,6 +113,12 @@ export const usePhotoStore = defineStore('photo', () => {
 
       photos.value = result.photos
       categoryNames.value = result.categoryNames
+
+      void cleanupMissingThumbnails(result.photos.map((photo) => photo.id))
+
+      if (shouldGenerateThumbnails) {
+        void generateThumbnailsForPhotos(result.photos)
+      }
     } finally {
       loading.value = false
     }
@@ -114,10 +131,121 @@ export const usePhotoStore = defineStore('photo', () => {
   function revokeObjectUrls() {
     for (const photo of photos.value) {
       URL.revokeObjectURL(photo.objectUrl)
+
+      if (photo.thumbnailUrl && photo.thumbnailUrl !== photo.objectUrl) {
+        URL.revokeObjectURL(photo.thumbnailUrl)
+      }
+    }
+  }
+
+  function revokePhotoThumbnailUrl(photo: PhotoItem) {
+    if (photo.thumbnailUrl && photo.thumbnailUrl !== photo.objectUrl) {
+      URL.revokeObjectURL(photo.thumbnailUrl)
+    }
+  }
+
+  function updatePhotoThumbnail(
+    photoId: string,
+    patch: Pick<PhotoItem, 'thumbnailLoading' | 'thumbnailError'> & {
+      thumbnailUrl?: string
+    },
+  ) {
+    const targetPhoto = photos.value.find((photo) => photo.id === photoId)
+
+    if (!targetPhoto) {
+      return
+    }
+
+    if (patch.thumbnailUrl && targetPhoto.thumbnailUrl !== patch.thumbnailUrl) {
+      revokePhotoThumbnailUrl(targetPhoto)
+    }
+
+    targetPhoto.thumbnailUrl = patch.thumbnailUrl ?? targetPhoto.thumbnailUrl
+    targetPhoto.thumbnailLoading = patch.thumbnailLoading
+    targetPhoto.thumbnailError = patch.thumbnailError
+  }
+
+  function cancelThumbnailGeneration() {
+    thumbnailGenerationToken += 1
+    thumbnailGenerating.value = false
+    thumbnailTotal.value = 0
+    thumbnailDone.value = 0
+    thumbnailFailed.value = 0
+  }
+
+  async function waitForNextThumbnailTask() {
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 0)
+    })
+  }
+
+  async function generateThumbnailsForPhotos(targetPhotos: PhotoItem[]) {
+    const generationToken = ++thumbnailGenerationToken
+    const concurrency = 3
+    let nextIndex = 0
+
+    thumbnailGenerating.value = targetPhotos.length > 0
+    thumbnailTotal.value = targetPhotos.length
+    thumbnailDone.value = 0
+    thumbnailFailed.value = 0
+
+    async function worker() {
+      while (generationToken === thumbnailGenerationToken) {
+        const photo = targetPhotos[nextIndex]
+        nextIndex += 1
+
+        if (!photo) {
+          return
+        }
+
+        updatePhotoThumbnail(photo.id, {
+          thumbnailLoading: true,
+          thumbnailError: false,
+        })
+
+        try {
+          await waitForNextThumbnailTask()
+          const result = await getOrCreateThumbnail(photo)
+
+          if (generationToken !== thumbnailGenerationToken) {
+            URL.revokeObjectURL(result.thumbnailUrl)
+            return
+          }
+
+          updatePhotoThumbnail(photo.id, {
+            thumbnailUrl: result.thumbnailUrl,
+            thumbnailLoading: false,
+            thumbnailError: false,
+          })
+        } catch (error) {
+          if (generationToken !== thumbnailGenerationToken) {
+            return
+          }
+
+          console.warn('Failed to generate thumbnail', photo.relativePath, error)
+          thumbnailFailed.value += 1
+
+          updatePhotoThumbnail(photo.id, {
+            thumbnailLoading: false,
+            thumbnailError: true,
+          })
+        } finally {
+          if (generationToken === thumbnailGenerationToken) {
+            thumbnailDone.value += 1
+          }
+        }
+      }
+    }
+
+    await Promise.all(Array.from({ length: Math.min(concurrency, targetPhotos.length) }, worker))
+
+    if (generationToken === thumbnailGenerationToken) {
+      thumbnailGenerating.value = false
     }
   }
 
   function clearPhotos() {
+    cancelThumbnailGeneration()
     revokeObjectUrls()
     photos.value = []
     categoryNames.value = []
@@ -134,6 +262,10 @@ export const usePhotoStore = defineStore('photo', () => {
     sortOrder,
     gridSize,
     loading,
+    thumbnailGenerating,
+    thumbnailTotal,
+    thumbnailDone,
+    thumbnailFailed,
     filteredPhotos,
     totalNormalPhotos,
     totalUnsortedPhotos,
@@ -142,6 +274,7 @@ export const usePhotoStore = defineStore('photo', () => {
     scanPhotos,
     setCurrentView,
     revokeObjectUrls,
+    generateThumbnailsForPhotos,
     clearPhotos,
   }
 })

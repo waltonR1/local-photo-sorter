@@ -320,6 +320,9 @@ onUnmounted(() => {
             <div class="main-title">
               {{ currentViewTitle }}
               <span class="photo-count"> {{ photoStore.filteredPhotos.length }} 张</span>
+              <span v-if="photoStore.thumbnailGenerating" class="thumbnail-progress">
+                正在生成缩略图：{{ photoStore.thumbnailDone }} / {{ photoStore.thumbnailTotal }}
+              </span>
             </div>
 
             <div class="main-filters">
@@ -462,6 +465,13 @@ onUnmounted(() => {
   margin-left: 8px;
   color: #909399;
   font-size: 13px;
+  font-weight: 400;
+}
+
+.thumbnail-progress {
+  margin-left: 12px;
+  color: #909399;
+  font-size: 12px;
   font-weight: 400;
 }
 

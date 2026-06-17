@@ -12,6 +12,9 @@ export interface PhotoItem {
   size: number
   lastModified: number
   objectUrl: string
+  thumbnailUrl?: string
+  thumbnailLoading?: boolean
+  thumbnailError?: boolean
   fileHandle: FileSystemFileHandle
   parentDirHandle: FileSystemDirectoryHandle
 }

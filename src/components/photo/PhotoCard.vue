@@ -22,12 +22,14 @@ defineEmits<{
   >
     <div class="image-wrapper">
       <img
-        :src="photo.objectUrl"
+        :src="photo.thumbnailUrl || photo.objectUrl"
         :alt="photo.name"
         loading="lazy"
         decoding="async"
         draggable="false"
       />
+
+      <span v-if="photo.thumbnailLoading" class="thumbnail-status">缓存中</span>
     </div>
 
     <div class="photo-name" :title="photo.name">
@@ -61,6 +63,7 @@ defineEmits<{
 }
 
 .image-wrapper {
+  position: relative;
   width: 100%;
   background: #f0f2f5;
 }
@@ -91,5 +94,17 @@ defineEmits<{
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.thumbnail-status {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 48%);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.4;
 }
 </style>

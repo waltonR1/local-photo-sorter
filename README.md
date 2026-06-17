@@ -67,6 +67,8 @@ Local Photo Sorter 是一个面向本地文件夹的照片整理工具。
   - 默认导入方式
   - 分类模式快捷键绑定
 - 支持重新选择工作区
+- 支持缩略图缓存，提升大量图片浏览性能
+- 浏览网格优先显示缩略图，大图预览继续显示原图
 
 ------
 
@@ -597,6 +599,7 @@ Ctrl + Z
 - 排序方式
 - 默认导入方式
 - 分类模式快捷键绑定
+- 缩略图缓存
 
 不保存到云端，不上传图片。
 
@@ -649,6 +652,7 @@ local-photo-sorter/
     │   ├── importService.ts
     │   ├── photoScanService.ts
     │   ├── renameService.ts
+    │   ├── thumbnailService.ts
     │   ├── trashService.ts
     │   └── workspaceService.ts
     ├── stores/
@@ -662,6 +666,7 @@ local-photo-sorter/
     │   ├── file-system-access.d.ts
     │   ├── photo.ts
     │   ├── settings.ts
+    │   ├── thumbnail.ts
     │   └── workspace.ts
     ├── utils/
     │   ├── classifyShortcuts.ts
@@ -692,7 +697,6 @@ local-photo-sorter/
 - 没有人脸识别
 - 没有多级分类
 - 没有多标签系统
-- 没有缩略图持久缓存
 - 没有云同步
 - 没有用户账号
 - 没有桌面应用打包
@@ -704,9 +708,8 @@ local-photo-sorter/
 
 ## 20. 后续计划
 
-v0.2 可考虑：
+v0.3 可考虑：
 
-- 缩略图缓存，提升大量图片浏览性能
 - 虚拟滚动或更细粒度懒加载
 - 持久化撤销历史
 - 多级分类
@@ -755,6 +758,7 @@ Local Photo Sorter 的设计目标是本地优先。
 - 不连接后端服务
 - 不需要登录
 - 不保存图片到云端
+- 缩略图缓存只保存在浏览器本地 IndexedDB
 - 只在用户授权的本地文件夹内操作
 
 用户应注意：

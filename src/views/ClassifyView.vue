@@ -1,50 +1,76 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
+import ClassifyActionPanel from '@/components/category/ClassifyActionPanel.vue'
 import CategoryCreateDialog from '@/components/category/CategoryCreateDialog.vue'
 import CategorySelectDialog from '@/components/category/CategorySelectDialog.vue'
+import PhotoRenameDialog from '@/components/photo/PhotoRenameDialog.vue'
+import { useClassifyQueue } from '@/composables/useClassifyQueue'
+import { useClassifyShortcuts } from '@/composables/useClassifyShortcuts'
 import { createCategoryFolder, movePhotoToCategory } from '@/services/categoryService'
+import { renamePhoto } from '@/services/renameService'
 import { movePhotoToDiscarded } from '@/services/trashService'
+import { useHistoryStore } from '@/stores/historyStore'
 import { usePhotoStore } from '@/stores/photoStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
-import type { PhotoItem } from '@/types/photo'
+import type { ShortcutCategory } from '@/types/category'
 import type { WorkspaceLanguage } from '@/types/workspace'
 import { getFolderNames } from '@/utils/folderNames'
-import PhotoRenameDialog from '@/components/photo/PhotoRenameDialog.vue'
-import { renamePhoto } from '@/services/renameService'
-import { useHistoryStore } from '@/stores/historyStore'
 
 const router = useRouter()
 const photoStore = usePhotoStore()
 const workspaceStore = useWorkspaceStore()
 const historyStore = useHistoryStore()
 
-const currentIndex = ref(0)
 const currentCategoryName = ref('')
-const skippedPhotoIds = ref<Set<string>>(new Set())
-
 const createCategoryDialogVisible = ref(false)
 const selectCategoryDialogVisible = ref(false)
 const handling = ref(false)
 const renameDialogVisible = ref(false)
 
-const allUnsortedPhotos = computed(() => {
-  return photoStore.photos.filter((photo) => photo.parentType === 'unsorted')
+const allPhotos = computed(() => photoStore.photos)
+
+async function goBackToBrowse() {
+  await router.push('/browse')
+}
+
+async function confirmRestartSkipped(skippedCount: number): Promise<boolean> {
+  try {
+    await ElMessageBox.confirm(
+      `本轮分类完成。\n\n还有 ${skippedCount} 张跳过的照片，是否重新处理？`,
+      '分类完成',
+      {
+        confirmButtonText: '重新处理',
+        cancelButtonText: '返回浏览',
+        type: 'info',
+      },
+    )
+
+    return true
+  } catch {
+    return false
+  }
+}
+
+const {
+  currentPhoto,
+  progressText,
+  normalizeCurrentIndex,
+  handleSkipCurrentPhoto,
+  handleQueueEndIfNeeded,
+} = useClassifyQueue({
+  photos: allPhotos,
+  confirmRestartSkipped,
+  onSkippedDeclined: goBackToBrowse,
+  async onQueueComplete() {
+    ElMessage.success('未分类照片已处理完成')
+    await goBackToBrowse()
+  },
 })
 
-const queuePhotos = computed(() => {
-  return allUnsortedPhotos.value.filter((photo) => {
-    return !skippedPhotoIds.value.has(photo.id)
-  })
-})
-
-const currentPhoto = computed<PhotoItem | null>(() => {
-  return queuePhotos.value[currentIndex.value] ?? null
-})
-
-const shortcutCategories = computed(() => {
+const shortcutCategories = computed<ShortcutCategory[]>(() => {
   return photoStore.categoryNames.slice(0, 10).map((name, index) => {
     return {
       name,
@@ -55,21 +81,6 @@ const shortcutCategories = computed(() => {
 
 const hasMoreCategories = computed(() => {
   return photoStore.categoryNames.length > 10
-})
-
-const progressText = computed(() => {
-  const total = allUnsortedPhotos.value.length
-  const current = Math.min(currentIndex.value + 1, queuePhotos.value.length)
-
-  if (total === 0) {
-    return '未分类：0 / 0'
-  }
-
-  return `未分类：${current} / ${queuePhotos.value.length}，跳过：${skippedPhotoIds.value.size}`
-})
-
-const currentCategoryLabel = computed(() => {
-  return currentCategoryName.value || '暂无'
 })
 
 function getCurrentWorkspaceOrThrow(): {
@@ -88,70 +99,14 @@ function getCurrentWorkspaceOrThrow(): {
   }
 }
 
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) {
-    return false
-  }
-
-  const tagName = target.tagName.toLowerCase()
-
-  return tagName === 'input' || tagName === 'textarea' || target.isContentEditable
-}
-
 function getCategoryByShortcutKey(key: string): string | null {
-  const item = shortcutCategories.value.find((category) => {
-    return category.key === key
-  })
+  const item = shortcutCategories.value.find((category) => category.key === key)
 
   return item?.name ?? null
 }
 
 function setCurrentCategory(categoryName: string) {
   currentCategoryName.value = categoryName
-}
-
-function normalizeCurrentIndex() {
-  if (currentIndex.value < 0) {
-    currentIndex.value = 0
-  }
-
-  if (currentIndex.value >= queuePhotos.value.length) {
-    currentIndex.value = Math.max(queuePhotos.value.length - 1, 0)
-  }
-}
-
-async function handleQueueEndIfNeeded() {
-  await nextTick()
-  normalizeCurrentIndex()
-
-  if (queuePhotos.value.length > 0) {
-    return
-  }
-
-  if (skippedPhotoIds.value.size > 0) {
-    try {
-      await ElMessageBox.confirm(
-        `本轮分类完成。\n\n还有 ${skippedPhotoIds.value.size} 张跳过的照片，是否重新处理？`,
-        '分类完成',
-        {
-          confirmButtonText: '重新处理',
-          cancelButtonText: '返回浏览',
-          type: 'info',
-        },
-      )
-
-      skippedPhotoIds.value = new Set()
-      currentIndex.value = 0
-
-      return
-    } catch {
-      await router.push('/browse')
-      return
-    }
-  }
-
-  ElMessage.success('未分类照片已处理完成')
-  await router.push('/browse')
 }
 
 async function refreshAfterAction() {
@@ -190,11 +145,7 @@ async function handleCreateCategory(categoryName: string) {
 }
 
 async function classifyCurrentPhotoTo(categoryName: string) {
-  if (handling.value) {
-    return
-  }
-
-  if (!currentPhoto.value) {
+  if (handling.value || !currentPhoto.value) {
     return
   }
 
@@ -203,7 +154,6 @@ async function classifyCurrentPhotoTo(categoryName: string) {
 
     const workspace = getCurrentWorkspaceOrThrow()
     const folderNames = getFolderNames(workspace.language)
-
     const photo = currentPhoto.value
 
     const toPath = await movePhotoToCategory({
@@ -241,11 +191,7 @@ async function classifyToCurrentCategory() {
 }
 
 async function handleMoveCurrentPhotoToDiscarded() {
-  if (handling.value) {
-    return
-  }
-
-  if (!currentPhoto.value) {
+  if (handling.value || !currentPhoto.value) {
     return
   }
 
@@ -254,7 +200,6 @@ async function handleMoveCurrentPhotoToDiscarded() {
 
     const workspace = getCurrentWorkspaceOrThrow()
     const folderNames = getFolderNames(workspace.language)
-
     const photo = currentPhoto.value
 
     const toPath = await movePhotoToDiscarded({
@@ -279,19 +224,6 @@ async function handleMoveCurrentPhotoToDiscarded() {
   } finally {
     handling.value = false
   }
-}
-
-async function handleSkipCurrentPhoto() {
-  if (!currentPhoto.value) {
-    return
-  }
-
-  const nextSkipped = new Set(skippedPhotoIds.value)
-  nextSkipped.add(currentPhoto.value.id)
-  skippedPhotoIds.value = nextSkipped
-
-  normalizeCurrentIndex()
-  await handleQueueEndIfNeeded()
 }
 
 function openOtherCategoryDialog() {
@@ -382,72 +314,26 @@ async function handleUndo() {
   }
 }
 
-async function goBackToBrowse() {
-  await router.push('/browse')
-}
-
-async function handleKeydown(event: KeyboardEvent) {
-  if (isTypingTarget(event.target)) {
-    return
-  }
-
-  if (
-    createCategoryDialogVisible.value ||
-    selectCategoryDialogVisible.value ||
-    renameDialogVisible.value
-  ) {
-    return
-  }
-
-  if (event.ctrlKey && event.key.toLowerCase() === 'z') {
-    event.preventDefault()
-    handleUndo()
-    return
-  }
-
-  const shortcutCategory = getCategoryByShortcutKey(event.key)
-
-  if (shortcutCategory) {
-    event.preventDefault()
-    await classifyCurrentPhotoTo(shortcutCategory)
-    return
-  }
-
-  if (event.key === 'Enter') {
-    event.preventDefault()
-    await classifyToCurrentCategory()
-    return
-  }
-
-  if (event.key === ' ') {
-    event.preventDefault()
-    await handleSkipCurrentPhoto()
-    return
-  }
-
-  if (event.key === 'Delete') {
-    event.preventDefault()
-    await handleMoveCurrentPhotoToDiscarded()
-    return
-  }
-
-  if (event.key.toLowerCase() === 'n') {
-    event.preventDefault()
+const { handleKeydown } = useClassifyShortcuts({
+  isDisabled: () => {
+    return (
+      createCategoryDialogVisible.value ||
+      selectCategoryDialogVisible.value ||
+      renameDialogVisible.value
+    )
+  },
+  getCategoryByShortcutKey,
+  classifyToCategory: classifyCurrentPhotoTo,
+  classifyToCurrentCategory,
+  skip: handleSkipCurrentPhoto,
+  discard: handleMoveCurrentPhotoToDiscarded,
+  createCategory: () => {
     createCategoryDialogVisible.value = true
-    return
-  }
-
-  if (event.key.toLowerCase() === 'r') {
-    event.preventDefault()
-    handleRenameCurrentPhoto()
-    return
-  }
-
-  if (event.key === 'Escape') {
-    event.preventDefault()
-    await goBackToBrowse()
-  }
-}
+  },
+  rename: handleRenameCurrentPhoto,
+  undo: handleUndo,
+  goBack: goBackToBrowse,
+})
 
 watch(
   () => photoStore.categoryNames,
@@ -483,7 +369,7 @@ onUnmounted(() => {
 
 <template>
   <div class="page">
-    <el-container class="layout">
+    <el-container class="layout" direction="vertical">
       <el-header class="header">
         <div>
           <div class="title">分类模式</div>
@@ -515,83 +401,21 @@ onUnmounted(() => {
           <el-empty v-else description="暂无待分类图片" />
         </div>
 
-        <div class="classify-actions">
-          <div class="current-category">当前分类：{{ currentCategoryLabel }}</div>
-
-          <template v-if="photoStore.categoryNames.length === 0">
-            <div class="empty-category-tip">暂无分类，请先创建分类。</div>
-
-            <div class="category-buttons">
-              <el-button type="primary" @click="createCategoryDialogVisible = true">
-                + 新分类 N
-              </el-button>
-
-              <el-button :disabled="!currentPhoto" @click="handleSkipCurrentPhoto">
-                跳过 Space
-              </el-button>
-
-              <el-button
-                type="danger"
-                plain
-                :disabled="!currentPhoto"
-                @click="handleMoveCurrentPhotoToDiscarded"
-              >
-                废弃 Delete
-              </el-button>
-            </div>
-          </template>
-
-          <template v-else>
-            <div class="section-label">快捷分类</div>
-
-            <div class="category-buttons">
-              <el-button
-                v-for="category in shortcutCategories"
-                :key="category.name"
-                :type="currentCategoryName === category.name ? 'primary' : 'default'"
-                @click="setCurrentCategory(category.name)"
-                @dblclick="classifyCurrentPhotoTo(category.name)"
-              >
-                {{ category.key }} {{ category.name }}
-              </el-button>
-
-              <el-button v-if="hasMoreCategories" @click="openOtherCategoryDialog">
-                选择其他分类
-              </el-button>
-
-              <el-button type="primary" plain @click="createCategoryDialogVisible = true">
-                + 新分类 N
-              </el-button>
-            </div>
-
-            <div class="main-actions">
-              <el-button
-                type="primary"
-                :disabled="!currentPhoto || !currentCategoryName"
-                @click="classifyToCurrentCategory"
-              >
-                Enter 放入当前分类
-              </el-button>
-
-              <el-button :disabled="!currentPhoto" @click="handleSkipCurrentPhoto">
-                Space 跳过
-              </el-button>
-
-              <el-button
-                type="danger"
-                plain
-                :disabled="!currentPhoto"
-                @click="handleMoveCurrentPhotoToDiscarded"
-              >
-                Delete 废弃
-              </el-button>
-
-              <el-button :disabled="!currentPhoto" @click="handleRenameCurrentPhoto">
-                R 重命名
-              </el-button>
-            </div>
-          </template>
-        </div>
+        <ClassifyActionPanel
+          :current-category-name="currentCategoryName"
+          :shortcut-categories="shortcutCategories"
+          :has-more-categories="hasMoreCategories"
+          :has-current-photo="Boolean(currentPhoto)"
+          :category-names="photoStore.categoryNames"
+          @select-category="setCurrentCategory"
+          @classify-current="classifyToCurrentCategory"
+          @classify-to-category="classifyCurrentPhotoTo"
+          @open-other-category="openOtherCategoryDialog"
+          @create-category="createCategoryDialogVisible = true"
+          @skip="handleSkipCurrentPhoto"
+          @discard="handleMoveCurrentPhotoToDiscarded"
+          @rename="handleRenameCurrentPhoto"
+        />
       </el-main>
     </el-container>
 
@@ -681,38 +505,5 @@ onUnmounted(() => {
   font-size: 14px;
   text-align: center;
   word-break: break-all;
-}
-
-.classify-actions {
-  padding: 24px 32px 28px;
-  background: #fff;
-  border-top: 1px solid #e4e7ed;
-}
-
-.current-category {
-  margin-bottom: 18px;
-  font-weight: 600;
-}
-
-.empty-category-tip {
-  margin-bottom: 12px;
-  color: #909399;
-}
-
-.section-label {
-  margin-bottom: 8px;
-  color: #606266;
-  font-size: 13px;
-}
-
-.category-buttons,
-.main-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.main-actions {
-  margin-top: 20px;
 }
 </style>

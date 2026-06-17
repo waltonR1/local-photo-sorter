@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
+import { useWorkspaceStore } from '@/stores/workspaceStore'
 import SetupView from '@/views/SetupView.vue'
 import BrowseView from '@/views/BrowseView.vue'
 import ClassifyView from '@/views/ClassifyView.vue'
@@ -42,7 +43,6 @@ router.beforeEach(async (to) => {
     return true
   }
 
-  const { useWorkspaceStore } = await import('@/stores/workspaceStore')
   const workspaceStore = useWorkspaceStore()
 
   if (!workspaceStore.hasWorkspace) {
